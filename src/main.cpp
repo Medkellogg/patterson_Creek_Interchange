@@ -1,11 +1,12 @@
 #include <Arduino.h>
 #include <Bounce2.h>
 #include "bcsjTimer.h"
-#include <OneButton.h>
-#include <Wire.h>
+//#include <OneButton.h>
+//#include <Wire.h>
 
 const byte MAX_LADDER_TRACKS {17};
 const byte MAX_TURNOUTS      {17};
+
 
 //---Turnout bit masks are encoded for shift register input. T0 is
 //   always lsb for shift register 
@@ -68,7 +69,7 @@ NOT USED          THROWN_S16,
 turnoutMap PattersonCreek = {         // Map #0
              16,               // numTracks
              0,                // startTrack
-             0,                // default track
+             1,                // default track
              false,            // have reverse track?
              "Patterson Creek",           // map name
 /* trk W0          */  0, 
@@ -83,7 +84,7 @@ turnoutMap PattersonCreek = {         // Map #0
 
 turnoutMap test = {         // Map #1
              16,               // numTracks
-             0,                // startTrack
+             1,                // startTrack
              0,                // default track
              false,            // have reverse track?
              "Test",           // map name
@@ -112,7 +113,7 @@ turnoutMap test = {         // Map #1
 //--------------Map yard memory addresses with pointer for crntMap----
 const turnoutMap *mapData[2] = {
   &PattersonCreek,   // #0
-  &test   // #1
+  &test              // #1
 };
 
 
@@ -134,11 +135,28 @@ Bounce debouncer1 = Bounce(); Bounce debouncer2 = Bounce();
 Bounce debouncer3 = Bounce(); Bounce debouncer4 = Bounce();
 Bounce debouncer5 = Bounce();
 
-//---------------SETUP STATE Machine and State Functions----------------------
+int     routeActive  = 0;
+uint8_t pinRegister  = 0;
+int     panelSelect  = 0;
+uint8_t crntMap      = 0;
+
+uint8_t lastRoute   = 0;
+bool newChoice = false;
+
+//---------------SETUP STATE Machine and State Functions-------------------
 enum {HOUSEKEEP, STAND_BY, TRACK_SETUP} mode;
 void runHOUSEKEEP();
 void runSTAND_BY();
 void runTRACK_SETUP();
+
+//------------ Function:  read route switches on fascia -------------------
+void readPanel();  
+//------------ Function: write route data to shift registerr ---------------
+//void writeTrackBits( uint16_t track);
+
+void blinkLED(int x);
+const uint8_t LED_PIN {2};
+
 
 //------------Setup turnout selection pins-----
 const byte routeA_pin {26},
@@ -153,12 +171,18 @@ void setup()
 {
   Serial.begin(115200);
   delay(1000);  //time to bring up serial monitor
-  Wire.setClock(1000000L);
+  
+  pinMode(LED_PIN, OUTPUT);
 
   //---Setup the sensor pins
   pinMode(routeA_pin, INPUT_PULLUP); pinMode(routeB_pin, INPUT_PULLUP);
   pinMode(routeC_pin, INPUT_PULLUP); pinMode(routeD_pin, INPUT_PULLUP);
   pinMode(routeE_pin, INPUT_PULLUP);
+
+  //---Shift register pins
+  pinMode(latchPin, OUTPUT);
+  pinMode(dataPin,  OUTPUT);  
+  pinMode(clockPin, OUTPUT);
 
   //---setup the Bounce pins and intervals :
   debouncer1.attach(routeA_pin); debouncer2.attach(routeB_pin);
@@ -167,12 +191,116 @@ void setup()
 
   debouncer1.interval(5);           debouncer2.interval(5); // interval in ms
   debouncer3.interval(5);           debouncer4.interval(5);
-  debouncer5.interval(5); 
+  debouncer5.interval(5);
+
+  writeTrackBits(mapData[crntMap]->routes[mapData[crntMap]->defaultTrack]); 
 
 }
 
 
 
 void loop() {
-  // put your main code here, to run repeatedly:
+                          Serial.println("void loop:      ");
+                          
+ 
+ if (mode == HOUSEKEEP)        {runHOUSEKEEP();}
+ else if (mode == STAND_BY)    {runSTAND_BY();}
+ else if (mode == TRACK_SETUP) {runTRACK_SETUP();}
+ 
 }
+
+
+//---this function is included.for possible future use---
+void runHOUSEKEEP()
+  {
+                          Serial.println("           RUNHOUSKEEP:  ");
+    runSTAND_BY();
+  }
+
+
+void runSTAND_BY()
+  {
+                          Serial.println("           STANDBY:  ");
+    
+    readPanel();
+  }
+
+void runTRACK_SETUP()
+  {
+                          Serial.println("           TRACKSETUP:  ");
+    writeTrackBits(mapData[crntMap]->routes[routeActive]);
+    newChoice = false;
+    runHOUSEKEEP();
+  }
+
+void readPanel() 
+  {
+    
+                          Serial.println("           readPANEL:  ");
+    do
+    {
+    //---check panel switches---
+    debouncer1.update();
+    debouncer2.update();
+    debouncer3.update();
+    debouncer4.update();
+    debouncer5.update();
+
+    //---update pinRegister--- 
+    if (debouncer1.read() == LOW) bitSet(pinRegister, 0);
+      else bitClear(pinRegister,0);
+    if (debouncer2.read() == LOW) bitSet(pinRegister, 1);
+      else bitClear(pinRegister,1);
+    if (debouncer3.read() == LOW) bitSet(pinRegister, 2);
+      else bitClear(pinRegister,2);
+    if (debouncer4.read() == LOW) bitSet(pinRegister, 3);
+      else bitClear(pinRegister,3);
+    if (debouncer5.read() == LOW) bitSet(pinRegister, 4);
+      else bitClear(pinRegister,4);
+
+    /*---evaluate: if change; for zero; and if a valid number (not: *
+    *    two buttons held down)                                     *
+    *---------------------------------------------------------------*/
+    uint8_t newRoute = pinRegister;
+    if ((lastRoute != newRoute) && 
+        (pinRegister != 0)      && 
+        (pinRegister == 1       ||
+         pinRegister == 2       ||
+         pinRegister == 4       ||
+         pinRegister == 8       ||
+         pinRegister == 16       )
+       )
+      {
+        lastRoute = newRoute;
+        routeActive = newRoute;
+        newChoice = true;
+
+        blinkLED(routeActive);  //debug
+
+        runTRACK_SETUP();
+      }
+    }
+    while (newChoice == false);
+}  
+
+void writeTrackBits(uint16_t track)
+{
+  digitalWrite(latchPin, LOW);
+  shiftOut(dataPin, clockPin, MSBFIRST, (track >> 8));
+  shiftOut(dataPin, clockPin, MSBFIRST, track);
+  digitalWrite(latchPin, HIGH);
+            //*/--DEBUG: 
+            Serial.print("trackFunction: ");
+            Serial.println(track);
+            Serial.println(track, BIN);  
+}  
+
+void blinkLED(int x)
+ {
+    for (int count {0}; count < x; ++count)
+    {digitalWrite(LED_PIN, HIGH);
+    delay(200);
+    digitalWrite(LED_PIN, LOW);
+    delay (200);
+    };
+ }
