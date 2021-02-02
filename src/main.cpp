@@ -73,11 +73,11 @@ turnoutMap PattersonCreek = {         // Map #0
              false,            // have reverse track?
              "Patterson Creek",           // map name
 /* trk W0          */  0, 
-/* ROUTE A         */  THROWN_S1+THROWN_S6+THROWN_S7+THROWN_S8, 
+/* ROUTE A         */  THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S11, 
 /* ROUTE B         */  THROWN_S2+THROWN_S6+THROWN_S13+THROWN_S14, 
-/* ROUTE C         */  THROWN_S3+THROWN_S8+THROWN_S9+THROWN_S10,
-/* ROUTE D         */  THROWN_S9+THROWN_S11,  
-/* ROUTE E         */  THROWN_S4+THROWN_S5+THROWN_S4+THROWN_S5, 
+/* ROUTE C         */  THROWN_S1+THROWN_S3+THROWN_S8+THROWN_S9+THROWN_S10,
+/* ROUTE D         */  THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S11,  
+/* ROUTE E         */  THROWN_S4+THROWN_S5+THROWN_S9+THROWN_S12+THROWN_S14 
 
 };
 
@@ -155,6 +155,7 @@ void readPanel();
 //void writeTrackBits( uint16_t track);
 
 void blinkLED(int x);
+void blinkLEDdash(int x);
 const uint8_t LED_PIN {2};
 
 
@@ -193,7 +194,18 @@ void setup()
   debouncer3.interval(5);           debouncer4.interval(5);
   debouncer5.interval(5);
 
-  writeTrackBits(mapData[crntMap]->routes[mapData[crntMap]->defaultTrack]); 
+  writeTrackBits(mapData[crntMap]->routes[mapData[crntMap]->defaultTrack]);
+
+  blinkLEDdash(1) ;
+  blinkLED(3);
+  delay(700);
+  blinkLED(1);
+  blinkLEDdash(1);
+  blinkLED(3);
+  delay(700);
+  blinkLED(3);
+  delay(1000);
+
 
 }
 
@@ -261,14 +273,39 @@ void readPanel()
     /*---evaluate: if change; for zero; and if a valid number (not: *
     *    two buttons held down)                                     *
     *---------------------------------------------------------------*/
-    uint8_t newRoute = pinRegister;
+    uint8_t testRoute = 0;
+
+    switch (pinRegister)
+    {
+    case 1:
+      testRoute = 1;
+      break;
+    case 2:
+      testRoute = 2;
+      break;
+    case 4:
+      testRoute = 3;
+      break;
+    case 8:
+      testRoute = 4;
+      break;
+    case 16:
+      testRoute = 5;
+      break;
+    
+    default:
+      break;
+    }
+
+    uint8_t newRoute = testRoute;
+
     if ((lastRoute != newRoute) && 
-        (pinRegister != 0)      && 
-        (pinRegister == 1       ||
-         pinRegister == 2       ||
-         pinRegister == 4       ||
-         pinRegister == 8       ||
-         pinRegister == 16       )
+        (pinRegister != 0)      //&& 
+        //(pinRegister == 1       ||
+         //pinRegister == 2       ||
+         //pinRegister == 4       ||
+         //pinRegister == 8       ||
+         //pinRegister == 16       )
        )
       {
         lastRoute = newRoute;
@@ -299,8 +336,17 @@ void blinkLED(int x)
  {
     for (int count {0}; count < x; ++count)
     {digitalWrite(LED_PIN, HIGH);
-    delay(200);
+    delay(100);
     digitalWrite(LED_PIN, LOW);
-    delay (200);
+    delay (100);
+    };
+ }
+void blinkLEDdash(int x)
+ {
+    for (int count {0}; count < x; ++count)
+    {digitalWrite(LED_PIN, HIGH);
+    delay(300);
+    digitalWrite(LED_PIN, LOW);
+    delay (300);
     };
  }
