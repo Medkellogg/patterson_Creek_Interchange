@@ -1,12 +1,9 @@
 #include <Arduino.h>
 #include <Bounce2.h>
-#include "bcsjTimer.h"
-//#include <OneButton.h>
-//#include <Wire.h>
+//#include "bcsjTimer.h"
 
 const byte MAX_LADDER_TRACKS {17};
 const byte MAX_TURNOUTS      {17};
-
 
 //---Turnout bit masks are encoded for shift register input. T0 is
 //   always lsb for shift register 
@@ -35,32 +32,6 @@ struct turnoutMap {
   char          mapName[16];
   uint16_t      routes[MAX_LADDER_TRACKS];
 };
-
-/**********************************************************************
-*    Channel assignment for turnouts and LED's for Patterson Creek
-*       THROWN_S(n) indicates thrown position for a turnout channel
-*       THROWN_S(n) indicates a lighted LED for a LED channel                              
-***********************************************************************
-
-TURNOUT 1         THROWN_S1, 
-TURNOUT 2         THROWN_S2, 
-TURNOUT 3         THROWN_S3, 
-TURNOUT 4         THROWN_S4,  
-TURNOUT 5         THROWN_S5, 
-LED_6             THROWN_S6,  
-LED_7             THROWN_S7,
-LED_8             THROWN_S8,
-LED_9             THROWN_S9,
-LED_10            THROWN_S10,
-LED_11            THROWN_S11, 
-LED_12            THROWN_S12,
-LED_13            THROWN_S13,
-LED_14            THROWN_S14,
-NOT USED          THROWN_S15,
-NOT USED          THROWN_S16,
-
-***********************************************************************/
-
 
 /**********************************************************************
 *    Test Yard IS USED TO TEST SINGLE TORTOISES.  
@@ -107,16 +78,11 @@ turnoutMap test = {         // Map #1
 /* NOT USED        */  THROWN_S16,
 };
 
-
-
-
 //--------------Map yard memory addresses with pointer for crntMap----
 const turnoutMap *mapData[2] = {
   &PattersonCreek,   // #0
   &test              // #1
 };
-
-
 
 //-----Setup pins for 74HC595 shift register 
 const int latchPin = 33;   
@@ -127,8 +93,8 @@ const int dataPin  = 25;
 void writeTrackBits( uint16_t track);
 
 //---Instantiate a bcsjTimer.h object for screen sleep
-bcsjTimer  timerTortoise;
-unsigned long interval_Tortoise     = 1000000L * 3;         //Tortoise run time interval
+//bcsjTimer  timerTortoise;
+//unsigned long interval_Tortoise     = 1000000L * 3;         //Tortoise run time interval
 
 // Instantiate a Bounce object
 Bounce debouncer1 = Bounce(); Bounce debouncer2 = Bounce(); 
@@ -154,7 +120,7 @@ void readPanel();
 //------------ Function: write route data to shift registerr ---------------
 //void writeTrackBits( uint16_t track);
 
-void blinkLED(int x);
+void blinkLEDdot(int x);
 void blinkLEDdash(int x);
 const uint8_t LED_PIN {2};
 
@@ -167,15 +133,18 @@ const byte routeA_pin {26},
            routeE_pin {23};
 
 
+/*------------------------------------------------*
+*               SET UP                            *
+*-------------------------------------------------*/
 
 void setup() 
 {
-  Serial.begin(115200);
-  delay(1000);  //time to bring up serial monitor
+  //Serial.begin(115200);
+  //delay(1000);  //time to bring up serial monitor
   
   pinMode(LED_PIN, OUTPUT);
 
-  //---Setup the sensor pins
+  //---Setup the switch input pins
   pinMode(routeA_pin, INPUT_PULLUP); pinMode(routeB_pin, INPUT_PULLUP);
   pinMode(routeC_pin, INPUT_PULLUP); pinMode(routeD_pin, INPUT_PULLUP);
   pinMode(routeE_pin, INPUT_PULLUP);
@@ -196,59 +165,56 @@ void setup()
 
   writeTrackBits(mapData[crntMap]->routes[mapData[crntMap]->defaultTrack]);
 
+//-----tap out B&O in American Morse at end of boot sequence
   blinkLEDdash(1) ;
-  blinkLED(3);
-  delay(700);
-  blinkLED(1);
-  blinkLEDdash(1);
-  blinkLED(3);
-  delay(700);
-  blinkLED(3);
-  delay(1000);
-
-
+  blinkLEDdot(3);
+      delay(1000);
+  blinkLEDdot(1);
+  delay(250);
+  blinkLEDdot(3);
+      delay(1000);
+  blinkLEDdot(1);
+  delay(250);
+  blinkLEDdot(1);
+      delay(1000);
 }
 
-
+/*------------------------------------------------*
+*               MAIN LOOP                         *
+*-------------------------------------------------*/
 
 void loop() {
                           Serial.println("void loop:      ");
-                          
- 
  if (mode == HOUSEKEEP)        {runHOUSEKEEP();}
  else if (mode == STAND_BY)    {runSTAND_BY();}
  else if (mode == TRACK_SETUP) {runTRACK_SETUP();}
- 
 }
 
 
-//---this function is included.for possible future use---
+//---interim function if any tasks need to be added---
 void runHOUSEKEEP()
   {
-                          Serial.println("           RUNHOUSKEEP:  ");
+                          //Serial.println("           RUNHOUSKEEP:  ");
     runSTAND_BY();
   }
 
-
 void runSTAND_BY()
   {
-                          Serial.println("           STANDBY:  ");
-    
+                          //Serial.println("           STANDBY:  ");
     readPanel();
   }
 
 void runTRACK_SETUP()
   {
-                          Serial.println("           TRACKSETUP:  ");
+                          //Serial.println("           TRACKSETUP:  ");
     writeTrackBits(mapData[crntMap]->routes[routeActive]);
-    newChoice = false;
+    newChoice = false;    //reset for do/while loop until another new choice
     runHOUSEKEEP();
   }
 
 void readPanel() 
   {
-    
-                          Serial.println("           readPANEL:  ");
+                          //Serial.println("           readPANEL:  ");
     do
     {
     //---check panel switches---
@@ -270,49 +236,33 @@ void readPanel()
     if (debouncer5.read() == LOW) bitSet(pinRegister, 4);
       else bitClear(pinRegister,4);
 
-    /*---evaluate: if change; for zero; and if a valid number (not: *
-    *    two buttons held down)                                     *
-    *---------------------------------------------------------------*/
     uint8_t testRoute = 0;
 
+    //---evaluate pinRegister bits to 1 through 5 for routes---
     switch (pinRegister)
     {
-    case 1:
-      testRoute = 1;
-      break;
-    case 2:
-      testRoute = 2;
-      break;
-    case 4:
-      testRoute = 3;
-      break;
-    case 8:
-      testRoute = 4;
-      break;
-    case 16:
-      testRoute = 5;
-      break;
-    
+    case 1:  testRoute = 1;   //---route A
+             break;
+    case 2:  testRoute = 2;   //---route B
+             break;
+    case 4:  testRoute = 3;   //---route C
+             break;
+    case 8:  testRoute = 4;   //---route D
+             break;
+    case 16: testRoute = 5;   //---route E
+             break;
     default:
-      break;
+             break;
     }
 
     uint8_t newRoute = testRoute;
 
-    if ((lastRoute != newRoute) && 
-        (pinRegister != 0)      //&& 
-        //(pinRegister == 1       ||
-         //pinRegister == 2       ||
-         //pinRegister == 4       ||
-         //pinRegister == 8       ||
-         //pinRegister == 16       )
-       )
+    if ((lastRoute != newRoute) &&     //---evaluate for change
+        (pinRegister != 0)    )
       {
         lastRoute = newRoute;
         routeActive = newRoute;
         newChoice = true;
-
-        blinkLED(routeActive);  //debug
 
         runTRACK_SETUP();
       }
@@ -320,19 +270,20 @@ void readPanel()
     while (newChoice == false);
 }  
 
-void writeTrackBits(uint16_t track)
+void writeTrackBits(uint16_t track)    //---shift bits into shift register 
 {
   digitalWrite(latchPin, LOW);
   shiftOut(dataPin, clockPin, MSBFIRST, (track >> 8));
   shiftOut(dataPin, clockPin, MSBFIRST, track);
   digitalWrite(latchPin, HIGH);
             //*/--DEBUG: 
-            Serial.print("trackFunction: ");
-            Serial.println(track);
-            Serial.println(track, BIN);  
+            //Serial.print("trackFunction: ");
+            //Serial.println(track);
+            //Serial.println(track, BIN);  
 }  
 
-void blinkLED(int x)
+//---blink routines for spelling out B&O in American Morse
+void blinkLEDdot(int x)
  {
     for (int count {0}; count < x; ++count)
     {digitalWrite(LED_PIN, HIGH);
