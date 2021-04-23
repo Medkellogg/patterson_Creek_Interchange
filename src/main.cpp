@@ -1,3 +1,32 @@
+/**********************************************************************
+*    Jeroen Gerritsen's B&O McKenzie Division - Staging Yard Project
+*    by: Mark Kellogg                          
+***********************************************************************
+
+***********************************************************************
+*                   VERSION 1.5  4/23/2021                            *
+***********************************************************************
+
+-----------------------------Github Repository-------------------------
+* 
+* The repository has all code etc. along with flow control overview and 
+* module graphics. 
+* Repository:  https://github.com/Medkellogg/mckenzie_staging_ESP32 
+*
+-----------------------------------------------------------------------
+*
+*            PATTERSON CREEK INTERCHANGE CONTROL SOFTWARE
+* This code is for use on the Main Driver Control Board and its purpose
+* is to control the 5 turnouts and associated LEDs on the Patterson Creek
+* Interchange Control Panel.  S1 through S5 drivers control the Tortoises
+* associated with the interchange.  S6 through S15 control the LEDs.  
+* LED current limit resistor values should be computed for 12 volts supplied by 
+* the driver circuit.
+*
+* The code is a subset of the main code used for the staging yards and is
+* used for simplicity of code maintenance. 
+***********************************************************************/
+
 #include <Arduino.h>
 #include <Bounce2.h>
 //#include "bcsjTimer.h"
@@ -44,11 +73,11 @@ turnoutMap PattersonCreek = {         // Map #0
              false,            // have reverse track?
              "Patterson Creek",           // map name
 /* trk W0          */  0, 
-/* ROUTE A         */  THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S11, 
+/* ROUTE A         */  THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S11+THROWN_S15,
 /* ROUTE B         */  THROWN_S2+THROWN_S6+THROWN_S13+THROWN_S14, 
-/* ROUTE C         */  THROWN_S1+THROWN_S3+THROWN_S8+THROWN_S9+THROWN_S10,
-/* ROUTE D         */  THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S11,  
-/* ROUTE E         */  THROWN_S4+THROWN_S5+THROWN_S9+THROWN_S12+THROWN_S14 
+/* ROUTE C         */  THROWN_S1+THROWN_S3+THROWN_S8+THROWN_S9+THROWN_S10+THROWN_S15,
+/* ROUTE D         */  THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S10+THROWN_S11+THROWN_S15,
+/* ROUTE E         */  THROWN_S4+THROWN_S5+THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S12+THROWN_S14 
 
 };
 
@@ -65,16 +94,16 @@ turnoutMap test = {         // Map #1
 /* SWITCH C        */  THROWN_S3, 
 /* SWITCH D        */  THROWN_S4,  
 /* SWITCH E        */  THROWN_S5, 
-/* LED_MAIN2EAST   */  THROWN_S6, 
-/* LED_MAIN1EAST   */  THROWN_S7,
-/* LED_MAINWEST    */  THROWN_S8,
-/* LED_CUMBERLAND  */  THROWN_S9,
-/* LED_SWITCH A    */  THROWN_S10,
-/* LED_SWITCH B    */  THROWN_S11, 
-/* LED_SWITCH C    */  THROWN_S12,
-/* LED_SWITCH D    */  THROWN_S13,
-/* LED_SWITCH E    */  THROWN_S14,
-/* NOT USED        */  THROWN_S15,
+/* LED_6           */  THROWN_S6, 
+/* LED_7           */  THROWN_S7,
+/* LED_8           */  THROWN_S8,
+/* LED_9           */  THROWN_S9,
+/* LED_10          */  THROWN_S10,
+/* LED_11          */  THROWN_S11, 
+/* LED_12          */  THROWN_S12,
+/* LED_13          */  THROWN_S13,
+/* LED_14          */  THROWN_S14,
+/* LED_15          */  THROWN_S15,
 /* NOT USED        */  THROWN_S16,
 };
 
@@ -92,38 +121,25 @@ const int dataPin  = 25;
 //-----declare latch function----
 void writeTrackBits( uint16_t track);
 
-//---Instantiate a bcsjTimer.h object for screen sleep
-//bcsjTimer  timerTortoise;
-//unsigned long interval_Tortoise     = 1000000L * 3;         //Tortoise run time interval
-
 // Instantiate a Bounce object
 Bounce debouncer1 = Bounce(); Bounce debouncer2 = Bounce(); 
 Bounce debouncer3 = Bounce(); Bounce debouncer4 = Bounce();
 Bounce debouncer5 = Bounce();
 
 int     routeActive  = 0;
-uint8_t pinRegister  = 0;
+uint8_t currentRoute = 0;
 int     panelSelect  = 0;
 uint8_t crntMap      = 0;
-
-uint8_t lastRoute   = 0;
+uint8_t lastRoute    = 0;
 bool newChoice = false;
 
-//---------------SETUP STATE Machine and State Functions-------------------
-enum {HOUSEKEEP, STAND_BY, TRACK_SETUP} mode;
+//---------------Declare Functions-------------------
 void runHOUSEKEEP();
 void runSTAND_BY();
 void runTRACK_SETUP();
-
-//------------ Function:  read route switches on fascia -------------------
 void readPanel();  
-//------------ Function: write route data to shift registerr ---------------
-//void writeTrackBits( uint16_t track);
-
 void blinkLEDdot(int x);
 void blinkLEDdash(int x);
-const uint8_t LED_PIN {2};
-
 
 //------------Setup turnout selection pins-----
 const byte routeA_pin {26},
@@ -131,6 +147,7 @@ const byte routeA_pin {26},
            routeC_pin {14},
            routeD_pin {12},
            routeE_pin {23};
+const uint8_t LED_PIN {2};
 
 
 /*------------------------------------------------*
@@ -155,7 +172,7 @@ void setup()
   pinMode(clockPin, OUTPUT);
 
   //---setup the Bounce pins and intervals :
-  debouncer1.attach(routeA_pin); debouncer2.attach(routeB_pin);
+  debouncer1.attach(routeA_pin);  debouncer2.attach(routeB_pin);
   debouncer3.attach(routeC_pin);  debouncer4.attach(routeD_pin);
   debouncer5.attach(routeE_pin);
 
@@ -165,17 +182,17 @@ void setup()
 
   writeTrackBits(mapData[crntMap]->routes[mapData[crntMap]->defaultTrack]);
 
-//-----tap out B&O in American Morse at end of boot sequence
-  blinkLEDdash(1) ;
-  blinkLEDdot(3);
+//-----tap out B&O in American Morse on relay/LED at end of boot sequence
+  blinkLEDdash(1);
+   blinkLEDdot(3);
       delay(1000);
-  blinkLEDdot(1);
-  delay(250);
-  blinkLEDdot(3);
+   blinkLEDdot(1);
+       delay(250);
+   blinkLEDdot(3);
       delay(1000);
-  blinkLEDdot(1);
-  delay(250);
-  blinkLEDdot(1);
+   blinkLEDdot(1);
+       delay(250);
+   blinkLEDdot(1);
       delay(1000);
 }
 
@@ -184,39 +201,41 @@ void setup()
 *-------------------------------------------------*/
 
 void loop() {
-                          Serial.println("void loop:      ");
- if (mode == HOUSEKEEP)        {runHOUSEKEEP();}
- else if (mode == STAND_BY)    {runSTAND_BY();}
- else if (mode == TRACK_SETUP) {runTRACK_SETUP();}
+  runHOUSEKEEP();
 }
 
+/*------------------------------------------------*
+*               Functions                         *
+*-------------------------------------------------*/
 
-//---interim function if any tasks need to be added---
-void runHOUSEKEEP()
-  {
-                          //Serial.println("           RUNHOUSKEEP:  ");
-    runSTAND_BY();
+void runHOUSEKEEP() {  //---Function for checking other conditions if necessary
+     runSTAND_BY();
   }
 
-void runSTAND_BY()
-  {
-                          //Serial.println("           STANDBY:  ");
-    readPanel();
+void runSTAND_BY() {  //---Main function to sample fascia switches
+     readPanel();
   }
 
-void runTRACK_SETUP()
-  {
-                          //Serial.println("           TRACKSETUP:  ");
+/*----------------------------------------------------------*
+*   TRACK_SETUP Function                                    *
+*   Recieves routeActive choice from STAND_BY amd writes    *
+*   bits to shift register which drive H-bridges.           *
+*-----------------------------------------------------------*/
+
+void runTRACK_SETUP() {
     writeTrackBits(mapData[crntMap]->routes[routeActive]);
     newChoice = false;    //reset for do/while loop until another new choice
     runHOUSEKEEP();
   }
 
-void readPanel() 
-  {
-                          //Serial.println("           readPANEL:  ");
-    do
-    {
+/*----------------------------------------------------------*
+*   readPanel Function                                      *
+*   Samples control panel switches, if a change, converts   *
+*   panelSwitch bits to route number and gives control      *
+*   to runTRACK function.                                   *
+*-----------------------------------------------------------*/
+void readPanel() {;
+    do {
     //---check panel switches---
     debouncer1.update();
     debouncer2.update();
@@ -224,67 +243,49 @@ void readPanel()
     debouncer4.update();
     debouncer5.update();
 
-    //---update pinRegister--- 
-    if (debouncer1.read() == LOW) bitSet(pinRegister, 0);
-      else bitClear(pinRegister,0);
-    if (debouncer2.read() == LOW) bitSet(pinRegister, 1);
-      else bitClear(pinRegister,1);
-    if (debouncer3.read() == LOW) bitSet(pinRegister, 2);
-      else bitClear(pinRegister,2);
-    if (debouncer4.read() == LOW) bitSet(pinRegister, 3);
-      else bitClear(pinRegister,3);
-    if (debouncer5.read() == LOW) bitSet(pinRegister, 4);
-      else bitClear(pinRegister,4);
-
-    uint8_t testRoute = 0;
-
-    //---evaluate pinRegister bits to 1 through 5 for routes---
-    switch (pinRegister)
-    {
-    case 1:  testRoute = 1;   //---route A
-             break;
-    case 2:  testRoute = 2;   //---route B
-             break;
-    case 4:  testRoute = 3;   //---route C
-             break;
-    case 8:  testRoute = 4;   //---route D
-             break;
-    case 16: testRoute = 5;   //---route E
-             break;
-    default:
+    //---update panelSwitch variable---
+    uint8_t panelSwitch  = 0; 
+    if (debouncer1.read() == LOW) bitSet(panelSwitch, 0);
+    if (debouncer2.read() == LOW) bitSet(panelSwitch, 1);
+    if (debouncer3.read() == LOW) bitSet(panelSwitch, 2);
+    if (debouncer4.read() == LOW) bitSet(panelSwitch, 3);
+    if (debouncer5.read() == LOW) bitSet(panelSwitch, 4);
+    
+    //---evaluate panelSwitch bits to 1 through 5 to write route info---
+    switch (panelSwitch) {
+      case 1:  currentRoute = 1;   //---route A
+               break;
+      case 2:  currentRoute = 2;   //---route B
+               break;
+      case 4:  currentRoute = 3;   //---route C
+               break;
+      case 8:  currentRoute = 4;   //---route D
+               break;
+      case 16: currentRoute = 5;   //---route E
+               break;
+      default:
              break;
     }
 
-    uint8_t newRoute = testRoute;
-
-    if ((lastRoute != newRoute) &&     //---evaluate for change
-        (pinRegister != 0)    )
-      {
-        lastRoute = newRoute;
-        routeActive = newRoute;
+    if (lastRoute != currentRoute) {
+        lastRoute = currentRoute;
+        routeActive = currentRoute;
         newChoice = true;
-
         runTRACK_SETUP();
       }
     }
     while (newChoice == false);
 }  
 
-void writeTrackBits(uint16_t track)    //---shift bits into shift register 
-{
+void writeTrackBits(uint16_t track) {    
   digitalWrite(latchPin, LOW);
   shiftOut(dataPin, clockPin, MSBFIRST, (track >> 8));
   shiftOut(dataPin, clockPin, MSBFIRST, track);
   digitalWrite(latchPin, HIGH);
-            //*/--DEBUG: 
-            //Serial.print("trackFunction: ");
-            //Serial.println(track);
-            //Serial.println(track, BIN);  
 }  
 
 //---blink routines for spelling out B&O in American Morse
-void blinkLEDdot(int x)
- {
+void blinkLEDdot(int x) {
     for (int count {0}; count < x; ++count)
     {digitalWrite(LED_PIN, HIGH);
     delay(100);
@@ -292,8 +293,8 @@ void blinkLEDdot(int x)
     delay (100);
     };
  }
-void blinkLEDdash(int x)
- {
+
+void blinkLEDdash(int x) {
     for (int count {0}; count < x; ++count)
     {digitalWrite(LED_PIN, HIGH);
     delay(300);
