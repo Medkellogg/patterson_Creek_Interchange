@@ -4,7 +4,7 @@
 ***********************************************************************
 
 ***********************************************************************
-*                   VERSION 1.5  4/23/2021                            *
+*                   VERSION 1.6  4/23/2021                            *
 ***********************************************************************
 
 -----------------------------Github Repository-------------------------
@@ -76,7 +76,7 @@ turnoutMap PattersonCreek = {         // Map #0
 /* ROUTE A         */  THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S11+THROWN_S15,
 /* ROUTE B         */  THROWN_S2+THROWN_S6+THROWN_S13+THROWN_S14, 
 /* ROUTE C         */  THROWN_S1+THROWN_S3+THROWN_S8+THROWN_S9+THROWN_S10+THROWN_S15,
-/* ROUTE D         */  THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S10+THROWN_S11+THROWN_S15,
+/* ROUTE D         */  THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S11+THROWN_S15,
 /* ROUTE E         */  THROWN_S4+THROWN_S5+THROWN_S6+THROWN_S7+THROWN_S8+THROWN_S9+THROWN_S12+THROWN_S14 
 
 };
